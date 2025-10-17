@@ -35,9 +35,13 @@ pub struct DecodedInstruction {
 
 /// Pump.fun instruction discriminators (first 8 bytes of instruction data)
 /// These are derived from the method name hashes in the Pump.fun program
+/// Format: SHA256("global:<method_name>")[0..8]
+const DISCRIMINATOR_INITIALIZE: [u8; 8] = [0xaf, 0xaf, 0x6d, 0x1f, 0x0d, 0x98, 0x9b, 0xed];
+const DISCRIMINATOR_SET_PARAMS: [u8; 8] = [0xa5, 0x1f, 0x86, 0x35, 0xbd, 0xb4, 0x82, 0xff];
 const DISCRIMINATOR_CREATE: [u8; 8] = [0x18, 0x1e, 0xc8, 0x28, 0x05, 0x1c, 0x07, 0x77];
 const DISCRIMINATOR_BUY: [u8; 8] = [0x66, 0x06, 0x3d, 0x12, 0x01, 0xda, 0xeb, 0xea];
 const DISCRIMINATOR_SELL: [u8; 8] = [0x33, 0xe6, 0x85, 0xa4, 0x01, 0x7f, 0x83, 0xad];
+const DISCRIMINATOR_WITHDRAW: [u8; 8] = [0xb7, 0x12, 0x46, 0x9c, 0x94, 0x6d, 0xa1, 0x22];
 
 /// Decode a Pump.fun instruction by discriminator
 pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedInstruction> {
@@ -61,6 +65,12 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
         Action::Buy
     } else if discriminator == DISCRIMINATOR_SELL {
         Action::Sell
+    } else if discriminator == DISCRIMINATOR_INITIALIZE 
+           || discriminator == DISCRIMINATOR_SET_PARAMS 
+           || discriminator == DISCRIMINATOR_WITHDRAW {
+        // These are admin/system instructions, not trades - skip them
+        tracing::debug!("Skipping non-trade Pump.fun instruction");
+        Action::Unknown
     } else {
         // Log unknown discriminator for analysis
         let disc_hex = discriminator.iter()
