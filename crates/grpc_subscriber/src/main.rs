@@ -335,6 +335,37 @@ async fn process_transaction(
                 _ => (None, None),
             };
 
+            // Get wallet alias (name) from the loaded aliases map
+            let wallet_alias = wallet_aliases.get(wallet).cloned();
+
+            // Build structured meta_json with balance information
+            let meta_json = if let Some(idx) = wallet_idx {
+                if idx < pre_balances.len() && idx < post_balances.len() {
+                    Some(serde_json::json!({
+                        "wallet_index": idx,
+                        "pre_balance": pre_balances[idx],
+                        "post_balance": post_balances[idx],
+                        "balance_change": (post_balances[idx] as i64) - (pre_balances[idx] as i64),
+                        "pre_balance_sol": pre_balances[idx] as f64 / LAMPORTS_PER_SOL,
+                        "post_balance_sol": post_balances[idx] as f64 / LAMPORTS_PER_SOL,
+                        "fee_lamports": meta.fee,
+                        "wallet_alias": wallet_alias,
+                    }))
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            // Build ix_accounts_json with account keys
+            let ix_accounts_json = Some(serde_json::json!({
+                "account_keys": account_keys,
+                "wallet": wallet,
+                "wallet_alias": wallet_alias,
+                "program": program_id.to_string(),
+            }));
+
             let event = db::raw_events::RawEvent {
                 ts_ns,
                 slot: Some(slot),
@@ -349,8 +380,8 @@ async fn process_transaction(
                 amount_out,
                 price_est: Some(sol_price),
                 fee_sol,
-                ix_accounts_json: None,
-                meta_json: None,
+                ix_accounts_json,
+                meta_json,
                 leader_wallet: None,
                 // New fields for complete event tracking
                 block_time: None, // block_time not available in gRPC meta (would need RPC lookup)
