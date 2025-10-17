@@ -7,8 +7,9 @@ pub enum Action {
     Create,
     Buy,
     Sell,
-    Swap,
     Withdraw,
+    Initialize,  // Admin: creates global state
+    SetParams,   // Admin: sets global parameters
     Unknown,
 }
 
@@ -18,8 +19,9 @@ impl Action {
             Action::Create => "CREATE",
             Action::Buy => "BUY",
             Action::Sell => "SELL",
-            Action::Swap => "SWAP",
             Action::Withdraw => "WITHDRAW",
+            Action::Initialize => "INITIALIZE",
+            Action::SetParams => "SET_PARAMS",
             Action::Unknown => "UNKNOWN",
         }
     }
@@ -69,18 +71,19 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
         Action::Sell
     } else if discriminator == DISCRIMINATOR_WITHDRAW {
         Action::Withdraw
-    } else if discriminator == DISCRIMINATOR_INITIALIZE 
-           || discriminator == DISCRIMINATOR_SET_PARAMS {
-        // These are admin/system instructions, not trades - skip them
-        tracing::debug!("Skipping non-trade Pump.fun instruction");
-        Action::Unknown
+    } else if discriminator == DISCRIMINATOR_INITIALIZE {
+        // Admin operation - but categorize it properly
+        Action::Initialize
+    } else if discriminator == DISCRIMINATOR_SET_PARAMS {
+        // Admin operation - but categorize it properly
+        Action::SetParams
     } else {
         // Log unknown discriminator for analysis
         let disc_hex = discriminator.iter()
             .map(|b| format!("{:02x}", b))
             .collect::<Vec<_>>()
             .join(" ");
-        tracing::warn!("Unknown Pump.fun discriminator: [{}]", disc_hex);
+        tracing::warn!("⚠️  Unknown Pump.fun discriminator: [{}]", disc_hex);
         Action::Unknown
     };
 
@@ -90,10 +93,12 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
     // - BUY: mint is at index 2
     // - SELL: mint is at index 2
     // - WITHDRAW: mint is at index 2
+    // - INITIALIZE: no mint (global state creation)
+    // - SET_PARAMS: no mint (global parameter update)
     let mint = match action {
         Action::Create => accounts.get(0).cloned(),
         Action::Buy | Action::Sell | Action::Withdraw => accounts.get(2).cloned(),
-        _ => None,
+        Action::Initialize | Action::SetParams | Action::Unknown => None,
     };
 
     // Parse instruction data:
