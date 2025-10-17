@@ -1,0 +1,20 @@
+[Unit]
+Description=Copytrader Bot - Pump.fun Trade Ingestion
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=sol
+WorkingDirectory=/home/sol/Desktop/solana-dev/Bots/copytrader-bot
+ExecStart=/home/sol/Desktop/solana-dev/Bots/copytrader-bot/run_bot.sh
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/sol/Desktop/solana-dev/Bots/copytrader-bot/logs/bot.log
+StandardError=append:/home/sol/Desktop/solana-dev/Bots/copytrader-bot/logs/bot.error.log
+
+# Environment
+Environment="RUST_LOG=info"
+Environment="RUST_BACKTRACE=1"
+
+[Install]
+WantedBy=multi-user.target

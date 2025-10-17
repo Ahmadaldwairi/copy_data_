@@ -1,0 +1,28 @@
+# Example runtime config
+
+[solana]
+rpc_url = "http://localhost:8899"
+ws_url = "ws://localhost:8899"  # WebSocket uses same port as RPC
+grpc_url = "http://localhost:10000"  # Yellowstone gRPC endpoint
+chain = "mainnet" # or "devnet"
+
+[pumpfun]
+program_id = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" # Pump.fun program ID
+
+[database]
+# Postgres connection URL
+url = "postgresql://ahmad:Jadoo31991@localhost:5432/copytrader"
+
+[risk]
+per_trade_sol_cap = 1.0
+per_hour_loss_cap_sol = 5.0
+max_concurrent_per_mint = 1
+
+[execution]
+base_slippage_bps = 75
+use_tpu = true
+use_jito = false
+
+[sources]
+# Path to your existing wallets.db (SQLite) used for seeding
+sqlite_wallets_path = "data/wallets.db"

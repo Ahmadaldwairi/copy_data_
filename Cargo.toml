@@ -1,0 +1,10 @@
+[workspace]
+members = [
+	"crates/common",
+	"crates/db",
+	"crates/decoder",
+	"crates/grpc_subscriber",
+	"crates/exec_bot",
+]
+resolver = "2"
+

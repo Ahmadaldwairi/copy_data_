@@ -1,0 +1,36 @@
+[package]
+name = "grpc_subscriber"
+version = "0.1.0"
+authors = ["you <you@example.com>"]
+edition = "2021"
+
+[dependencies]
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal"] }
+tokio-stream = "0.1"
+common = { path = "../common" }
+db = { path = "../db", features = ["postgres"] }
+decoder = { path = "../decoder" }
+
+# Solana SDK 2.x to match yellowstone-grpc
+solana-client = "2"
+solana-sdk = "2"
+solana-transaction-status = "2"
+
+# Yellowstone gRPC - using local path like your working bot
+yellowstone-grpc-client = { path = "../../../../yellowstone-grpc/yellowstone-grpc-client" }
+yellowstone-grpc-proto = { path = "../../../../yellowstone-grpc/yellowstone-grpc-proto" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bs58 = "0.5"
+chrono = "0.4"
+toml = "0.8"
+futures = "0.3"
+sqlx = { version = "0.6", default-features = false, features = ["runtime-tokio-rustls", "macros", "postgres"] }
+
+[package.metadata]
+description = "Yellowstone gRPC subscriber (stub)"
+
