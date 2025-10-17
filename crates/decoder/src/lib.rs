@@ -29,6 +29,8 @@ pub struct DecodedInstruction {
     pub mint: Option<String>,
     pub token_amount: Option<u64>,
     pub max_sol_cost: Option<u64>, // For BUY: max SOL to spend; For SELL: min SOL to receive
+    pub decode_ok: bool,
+    pub decode_err: Option<String>,
 }
 
 /// Pump.fun instruction discriminators (first 8 bytes of instruction data)
@@ -40,11 +42,14 @@ const DISCRIMINATOR_SELL: [u8; 8] = [0x33, 0xe6, 0x85, 0xa4, 0x01, 0x7f, 0x83, 0
 /// Decode a Pump.fun instruction by discriminator
 pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedInstruction> {
     if data.len() < 8 {
+        let err_msg = format!("Instruction data too short: {} bytes (expected at least 8)", data.len());
         return Ok(DecodedInstruction {
             action: Action::Unknown,
             mint: None,
             token_amount: None,
             max_sol_cost: None,
+            decode_ok: false,
+            decode_err: Some(err_msg),
         });
     }
 
@@ -57,6 +62,12 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
     } else if discriminator == DISCRIMINATOR_SELL {
         Action::Sell
     } else {
+        // Log unknown discriminator for analysis
+        let disc_hex = discriminator.iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+        tracing::warn!("Unknown Pump.fun discriminator: [{}]", disc_hex);
         Action::Unknown
     };
 
@@ -89,10 +100,24 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
         None
     };
 
+    // Determine if decode was successful
+    let (decode_ok, decode_err) = match action {
+        Action::Unknown => {
+            let disc_hex = discriminator.iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
+            (false, Some(format!("Unknown discriminator: [{}]", disc_hex)))
+        },
+        _ => (true, None),
+    };
+
     Ok(DecodedInstruction {
         action,
         mint,
         token_amount,
         max_sol_cost,
+        decode_ok,
+        decode_err,
     })
 }

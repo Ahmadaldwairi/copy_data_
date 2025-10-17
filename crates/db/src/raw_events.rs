@@ -22,6 +22,12 @@ pub struct RawEvent {
     pub ix_accounts_json: Option<JsonValue>,
     pub meta_json: Option<JsonValue>,
     pub leader_wallet: Option<String>,
+    // New fields for complete event tracking
+    pub block_time: Option<i64>,      // Chain timestamp from metadata
+    pub recv_time_ns: Option<i64>,    // Local receive timestamp for latency analysis
+    pub ix_index: Option<i32>,        // Instruction index within transaction
+    pub decode_ok: bool,               // Whether decode was successful
+    pub decode_err: Option<String>,   // Error message if decode failed
 }
 
 pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Result<()> {
@@ -36,43 +42,9 @@ pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Resu
             INSERT INTO raw_events (
                 ts_ns, slot, sig, wallet, program, action,
                 mint, base_mint, quote_mint, amount_in, amount_out,
-                price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
-            ON CONFLICT (sig, wallet, action) DO NOTHING
-            "#
-        )
-        .bind(event.ts_ns)
-        .bind(event.slot)
-        .bind(&event.sig)
-        .bind(&event.wallet)
-        .bind(&event.program)
-        .bind(&event.action)
-        .bind(&event.mint)
-        .bind(&event.base_mint)
-        .bind(&event.quote_mint)
-        .bind(event.amount_in)
-        .bind(event.amount_out)
-        .bind(event.price_est)
-        .bind(&event.ix_accounts_json)
-        .bind(&event.meta_json)
-        .bind(&event.leader_wallet)
-        .execute(&mut *tx)
-        .await?;
-    }
-    tx.commit().await?;
-    Ok(())
-}
-
-pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Result<usize> {
-    let mut count = 0;
-    for event in events {
-        sqlx::query(
-            r#"
-            INSERT INTO raw_events (
-                ts_ns, slot, sig, wallet, program, action,
-                mint, base_mint, quote_mint, amount_in, amount_out,
-                price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet,
+                block_time, recv_time_ns, ix_index, decode_ok, decode_err
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
             ON CONFLICT (sig, wallet, action) DO NOTHING
             "#
         )
@@ -92,6 +64,53 @@ pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Resu
         .bind(&event.ix_accounts_json)
         .bind(&event.meta_json)
         .bind(&event.leader_wallet)
+        .bind(event.block_time)
+        .bind(event.recv_time_ns)
+        .bind(event.ix_index)
+        .bind(event.decode_ok)
+        .bind(&event.decode_err)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Result<usize> {
+    let mut count = 0;
+    for event in events {
+        sqlx::query(
+            r#"
+            INSERT INTO raw_events (
+                ts_ns, slot, sig, wallet, program, action,
+                mint, base_mint, quote_mint, amount_in, amount_out,
+                price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet,
+                block_time, recv_time_ns, ix_index, decode_ok, decode_err
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+            ON CONFLICT (sig, wallet, action) DO NOTHING
+            "#
+        )
+        .bind(event.ts_ns)
+        .bind(event.slot)
+        .bind(&event.sig)
+        .bind(&event.wallet)
+        .bind(&event.program)
+        .bind(&event.action)
+        .bind(&event.mint)
+        .bind(&event.base_mint)
+        .bind(&event.quote_mint)
+        .bind(event.amount_in)
+        .bind(event.amount_out)
+        .bind(event.price_est)
+        .bind(event.fee_sol)
+        .bind(&event.ix_accounts_json)
+        .bind(&event.meta_json)
+        .bind(&event.leader_wallet)
+        .bind(event.block_time)
+        .bind(event.recv_time_ns)
+        .bind(event.ix_index)
+        .bind(event.decode_ok)
+        .bind(&event.decode_err)
         .execute(pool)
         .await
         .map(|_| {

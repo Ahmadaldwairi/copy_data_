@@ -352,6 +352,12 @@ async fn process_transaction(
                 ix_accounts_json: None,
                 meta_json: None,
                 leader_wallet: None,
+                // New fields for complete event tracking
+                block_time: None, // block_time not available in gRPC meta (would need RPC lookup)
+                recv_time_ns: Some(ts_ns),
+                ix_index: None, // Can track which instruction if needed for multi-ix txs
+                decode_ok: decoded.decode_ok,
+                decode_err: decoded.decode_err.clone(),
             };
 
             // Log the trade details with SOL amounts
