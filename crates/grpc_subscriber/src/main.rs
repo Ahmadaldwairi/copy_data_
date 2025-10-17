@@ -267,7 +267,7 @@ async fn process_transaction(
         .collect();
     info!("👤 Wallets: {:?}", wallet_names);
 
-    // Decode Pump.fun instructions
+    // Decode Pump.fun instructions from top-level
     let mut decoded_actions = Vec::new();
     for instruction in &message.instructions {
         let program_idx = instruction.program_id_index as usize;
@@ -278,9 +278,22 @@ async fn process_transaction(
         }
     }
 
+    // Also check inner instructions (this is where BUYs often hide!)
+    for inner_ix_set in &meta.inner_instructions {
+        for inner_ix in &inner_ix_set.instructions {
+            let program_idx = inner_ix.program_id_index as usize;
+            if program_idx < account_keys.len() && account_keys[program_idx] == program_id.to_string() {
+                // Found a Pump.fun instruction in inner instructions!
+                let decoded = decoder::decode_instruction(&inner_ix.data, &account_keys)?;
+                decoded_actions.push(decoded);
+                info!("🔍 Found Pump.fun instruction in INNER instructions (likely a BUY!)");
+            }
+        }
+    }
+
     // If no decodable instructions found, skip
     if decoded_actions.is_empty() {
-        warn!("     No Pump.fun instructions found in transaction");
+        warn!("⚠️  No Pump.fun instructions found in transaction (checked both top-level and inner)");
         return Ok(());
     }
 
