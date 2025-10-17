@@ -1,35 +1,42 @@
 # Cleanup Report - October 17, 2025
 
 ## Summary
+
 Major cleanup completed - removed **10.2GB** of unnecessary files.
 
 ## Files Deleted
 
 ### 1. **execution/** (1.6GB) ❌
+
 - Your private execution bot
 - Not needed for this copytrader project
 - We'll build a new execution bot from scratch when ready
 
 ### 2. **target/** (8.6GB) ❌
+
 - Rust build artifacts
 - Can be regenerated with `cargo build`
 - Already in .gitignore
 
 ### 3. **tests/** (empty) ❌
+
 - Empty folder
 - Not being used
 
 ### 4. **crates/exec_bot/** ❌
+
 - Stub code with placeholder `main.rs`
 - We'll create a proper execution bot later
 - Removed from Cargo.toml workspace members
 
 ### 5. **Cargo.lock** ❌
+
 - Auto-generated dependency lock file
 - Already in .gitignore
 - Will regenerate on first build
 
 ### 6. **Redundant Documentation** ❌
+
 - `docs/PLANNING.md` - Outdated planning doc
 - `docs/STATUS.md` - Status info now in other files
 - `docs/QUICKSTART.md` - Info covered in README.md and RUNNING.md
@@ -38,22 +45,26 @@ Major cleanup completed - removed **10.2GB** of unnecessary files.
 ## What Was Kept ✅
 
 ### Source Code
+
 - ✅ `crates/common/` - Shared utilities, config, SOL price
 - ✅ `crates/db/` - Database models and queries
 - ✅ `crates/decoder/` - Pump.fun instruction decoder
 - ✅ `crates/grpc_subscriber/` - Main ingestion bot
 
 ### Configuration
+
 - ✅ `configs/config.example.toml` - Configuration template
 - ✅ `.env` - Your database credentials (not in git)
 - ✅ `.gitignore` - Protects sensitive files
 
 ### Database
+
 - ✅ `sql/postgres_init.sql` - Initial schema
 - ✅ `sql/postgres_wallet_roles.sql` - Wallet roles
 - ✅ `sql/add_missing_columns.sql` - Recent migration
 
 ### Scripts
+
 - ✅ `scripts/init_postgres.py` - Database initialization
 - ✅ `scripts/seed_wallets.py` - Wallet seeding
 - ✅ `run_bot.sh` - Bot startup script
@@ -61,6 +72,7 @@ Major cleanup completed - removed **10.2GB** of unnecessary files.
 - ✅ `copytrader-bot.service` - Systemd service
 
 ### Documentation
+
 - ✅ `README.md` - Project overview
 - ✅ `Checklist.md` - Implementation checklist (100% complete)
 - ✅ `docs/RUNNING.md` - How to run the bot
@@ -72,14 +84,15 @@ Major cleanup completed - removed **10.2GB** of unnecessary files.
 - ✅ `docs/COMPLETE_EVENT_TRACKING.md` - Latest implementation details
 
 ### Other
+
 - ✅ `.git/` (748KB) - Git repository
 - ✅ `data/` - Data directory (empty placeholder)
 - ✅ `logs/` - Logs directory (empty placeholder)
 
 ## Size Comparison
 
-| Before | After | Reduction |
-|--------|-------|-----------|
+| Before  | After | Reduction  |
+| ------- | ----- | ---------- |
 | ~11.4GB | 1.2MB | **99.99%** |
 
 ## Workspace Structure (After Cleanup)
@@ -87,13 +100,13 @@ Major cleanup completed - removed **10.2GB** of unnecessary files.
 ```
 copytrader-bot/
 ├── .git/                    (748KB - clean repo)
-├── .gitignore              
+├── .gitignore
 ├── Cargo.toml              (workspace config)
 ├── Checklist.md            (100% complete)
-├── README.md               
+├── README.md
 ├── configs/
 │   └── config.example.toml
-├── copytrader-bot.service  
+├── copytrader-bot.service
 ├── crates/
 │   ├── common/             (config, logging, SOL price)
 │   ├── db/                 (database models)
@@ -102,21 +115,24 @@ copytrader-bot/
 ├── data/                   (empty placeholder)
 ├── docs/                   (7 essential docs)
 ├── logs/                   (empty placeholder)
-├── run_bot.sh              
+├── run_bot.sh
 ├── scripts/                (Python setup scripts)
-├── setup_git.sh            
+├── setup_git.sh
 └── sql/                    (3 SQL files)
 ```
 
 ## Next Steps
 
 1. **To rebuild the bot:**
+
    ```bash
    cargo build --release
    ```
+
    This will regenerate `target/` and `Cargo.lock` as needed.
 
 2. **To run the bot:**
+
    ```bash
    ./run_bot.sh
    ```
@@ -131,7 +147,7 @@ copytrader-bot/
 ✅ **Cleaner repository** - Only essential files  
 ✅ **Easier collaboration** - Clear structure  
 ✅ **Quick clones** - Small repo size  
-✅ **No sensitive data** - Private bot removed  
+✅ **No sensitive data** - Private bot removed
 
 ## Notes
 

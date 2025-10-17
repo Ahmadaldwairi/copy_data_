@@ -23,16 +23,19 @@ recv_time_ns: Some(ts_ns),
 ```
 
 **What it does:**
+
 - Captures the exact nanosecond timestamp when the event is received locally
 - Uses `chrono::Utc::now().timestamp_nanos_opt()`
 - Stored in database for latency analysis
 
 **Database column:**
+
 ```sql
 recv_time_ns BIGINT
 ```
 
 **Purpose:**
+
 - Calculate propagation delays between chain and local system
 - Measure bot reaction times
 - Optimize copy-trading timing
@@ -49,22 +52,26 @@ decode_err: decoded.decode_err.clone(),
 ```
 
 **What it does:**
+
 - Tracks whether instruction decode was successful
 - Stores error message if decode failed
 - Logs unknown discriminators for analysis
 
 **Database columns:**
+
 ```sql
 decode_ok BOOLEAN NOT NULL DEFAULT TRUE
 decode_err TEXT
 ```
 
 **Example error message:**
+
 ```
 "Unknown discriminator: [a1 b2 c3 d4 e5 f6 g7 h8]"
 ```
 
 **Purpose:**
+
 - Monitor decoder health (% of successful decodes)
 - Identify new Pump.fun instruction types
 - Troubleshoot decode failures
@@ -99,6 +106,7 @@ let meta_json = if let Some(idx) = wallet_idx {
 ```
 
 **What it stores:**
+
 - `wallet_index` - Position in transaction account keys
 - `pre_balance` - Balance before transaction (lamports)
 - `post_balance` - Balance after transaction (lamports)
@@ -109,11 +117,13 @@ let meta_json = if let Some(idx) = wallet_idx {
 - `wallet_alias` - Wallet name/alias
 
 **Database column:**
+
 ```sql
 meta_json JSONB
 ```
 
 **Example stored data:**
+
 ```json
 {
   "wallet_index": 3,
@@ -128,6 +138,7 @@ meta_json JSONB
 ```
 
 **Purpose:**
+
 - Precise P&L calculation even if price decode fails
 - Reconstruct exact transaction flow
 - Calculate net profit after fees
@@ -147,11 +158,13 @@ let wallet_alias = wallet_aliases.get(wallet).cloned();
 **Also stored in two places:**
 
 1. **In meta_json:**
+
 ```rust
 "wallet_alias": wallet_alias,
 ```
 
 2. **In ix_accounts_json:**
+
 ```rust
 let ix_accounts_json = Some(serde_json::json!({
     "account_keys": account_keys,
@@ -162,17 +175,20 @@ let ix_accounts_json = Some(serde_json::json!({
 ```
 
 **How it works:**
+
 1. Aliases loaded at bot startup from database: `load_tracked_wallets(&pool)`
 2. Stored in HashMap: `wallet_aliases: HashMap<String, String>`
 3. Looked up during event creation: `wallet_aliases.get(wallet)`
 4. Stored in both `meta_json` and `ix_accounts_json` for easy access
 
 **Example alias data:**
+
 - Wallet: `78N177...` → Alias: `"Sheep"`
 - Wallet: `5YGz8w...` → Alias: `"Euris 5M"`
 - Wallet: `3Kxnd9...` → Alias: `"King Solomon"`
 
 **Purpose:**
+
 - Human-readable wallet identification in queries
 - No need for joins when analyzing data
 - Preserved in event history even if alias changes
@@ -187,43 +203,43 @@ All fields are properly stored in the database:
 ```sql
 CREATE TABLE raw_events (
   id BIGSERIAL PRIMARY KEY,
-  
+
   -- Timestamps
   ts_ns BIGINT NOT NULL,              -- General timestamp
   recv_time_ns BIGINT,                 ✅ Local receive time
   block_time TIMESTAMPTZ,              -- Chain timestamp
   slot BIGINT,
-  
+
   -- Identity
   sig TEXT,
   wallet TEXT NOT NULL,
   program TEXT NOT NULL,
-  
+
   -- Action
   action TEXT NOT NULL,
   mint TEXT,
   base_mint TEXT,
   quote_mint TEXT,
-  
+
   -- Amounts
   amount_in DOUBLE PRECISION,
   amount_out DOUBLE PRECISION,
   price_est DOUBLE PRECISION,
   fee_sol DOUBLE PRECISION,
-  
+
   -- Metadata
   ix_accounts_json JSONB,              ✅ Contains wallet_alias
   meta_json JSONB,                     ✅ Contains structured balances + alias
-  
+
   -- Decode status
   decode_ok BOOLEAN NOT NULL,          ✅ Decode success flag
   decode_err TEXT,                     ✅ Error message
-  
+
   -- Other
   ix_index INT,
   leader_wallet TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  
+
   UNIQUE(sig, wallet, action)
 );
 ```
@@ -231,8 +247,9 @@ CREATE TABLE raw_events (
 ## Example Query Usage
 
 ### Get events with wallet names:
+
 ```sql
-SELECT 
+SELECT
   meta_json->>'wallet_alias' as wallet_name,
   action,
   amount_out as sol_amount,
@@ -244,10 +261,11 @@ LIMIT 10;
 ```
 
 ### Calculate P&L from structured balances:
+
 ```sql
-SELECT 
+SELECT
   meta_json->>'wallet_alias' as trader,
-  (meta_json->>'post_balance_sol')::numeric - 
+  (meta_json->>'post_balance_sol')::numeric -
   (meta_json->>'pre_balance_sol')::numeric as profit_sol
 FROM raw_events
 WHERE action = 'SELL'
@@ -255,14 +273,16 @@ AND meta_json IS NOT NULL;
 ```
 
 ### Monitor decode success rate:
+
 ```sql
-SELECT 
+SELECT
   COUNT(*) FILTER (WHERE decode_ok = true) * 100.0 / COUNT(*) as success_rate_pct,
   COUNT(*) FILTER (WHERE decode_ok = false) as failed_count
 FROM raw_events;
 ```
 
 ### Find unknown discriminators:
+
 ```sql
 SELECT DISTINCT decode_err
 FROM raw_events
@@ -280,6 +300,7 @@ cargo build --release
 **Result:** ✅ **Compiled successfully in 52.54s**
 
 All crates compiled without errors:
+
 - ✅ common (config, logging, SOL price)
 - ✅ db (database models)
 - ✅ decoder (Pump.fun decoder with error tracking)
@@ -287,40 +308,45 @@ All crates compiled without errors:
 
 ## Verification Checklist
 
-| Requirement | Implemented | Tested | Location |
-|------------|-------------|--------|----------|
-| recv_time_ns | ✅ | ✅ | main.rs:395 |
-| decode_ok flag | ✅ | ✅ | main.rs:396 |
-| decode_err message | ✅ | ✅ | main.rs:397 |
-| Structured balances | ✅ | ✅ | main.rs:336-349 |
-| wallet_alias in meta_json | ✅ | ✅ | main.rs:345 |
-| wallet_alias in ix_accounts_json | ✅ | ✅ | main.rs:352-357 |
-| Database columns | ✅ | ✅ | sql/add_missing_columns.sql |
-| Compilation | ✅ | ✅ | 52.54s, 0 errors |
+| Requirement                      | Implemented | Tested | Location                    |
+| -------------------------------- | ----------- | ------ | --------------------------- |
+| recv_time_ns                     | ✅          | ✅     | main.rs:395                 |
+| decode_ok flag                   | ✅          | ✅     | main.rs:396                 |
+| decode_err message               | ✅          | ✅     | main.rs:397                 |
+| Structured balances              | ✅          | ✅     | main.rs:336-349             |
+| wallet_alias in meta_json        | ✅          | ✅     | main.rs:345                 |
+| wallet_alias in ix_accounts_json | ✅          | ✅     | main.rs:352-357             |
+| Database columns                 | ✅          | ✅     | sql/add_missing_columns.sql |
+| Compilation                      | ✅          | ✅     | 52.54s, 0 errors            |
 
 ## What This Enables
 
 ### 1. **Precise P&L Analysis**
+
 - Exact SOL amounts before/after each trade
 - Net profit after fees
 - USD value at time of trade
 
 ### 2. **Latency Optimization**
+
 - Measure recv_time_ns vs block_time
 - Identify fastest wallets
 - Optimize copy-trading timing
 
 ### 3. **Decoder Health Monitoring**
+
 - Track decode_ok success rate
 - Identify failing patterns
 - Alert on decode rate drops
 
 ### 4. **Human-Readable Analysis**
+
 - Query by wallet name instead of address
 - "Show me Sheep's trades"
 - No complex joins needed
 
 ### 5. **Audit Trail**
+
 - Complete balance history
 - Every transaction reconstructable
 - Wallet aliases preserved
@@ -330,6 +356,7 @@ All crates compiled without errors:
 ✅ **Ingestor is 100% complete and production-ready**
 
 **Ready for:**
+
 1. Analytics layer (P&L, win rates, hold times)
 2. Top performer identification
 3. Execution bot implementation

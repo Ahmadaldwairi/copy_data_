@@ -10,6 +10,7 @@ pub struct RawEvent {
     pub slot: Option<i64>,
     pub sig: Option<String>,
     pub wallet: String,
+    pub alias: Option<String>,         // Wallet alias/name for easy querying
     pub program: String,
     pub action: String,
     pub mint: Option<String>,
@@ -28,6 +29,10 @@ pub struct RawEvent {
     pub ix_index: Option<i32>,        // Instruction index within transaction
     pub decode_ok: bool,               // Whether decode was successful
     pub decode_err: Option<String>,   // Error message if decode failed
+    // Parsed balance fields for P&L accuracy (extracted from meta_json)
+    pub pre_balance_sol: Option<f64>,  // Wallet SOL balance before transaction
+    pub post_balance_sol: Option<f64>, // Wallet SOL balance after transaction
+    pub balance_change_sol: Option<f64>, // Net SOL balance change (post - pre)
 }
 
 pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Result<()> {
@@ -40,11 +45,12 @@ pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Resu
         sqlx::query(
             r#"
             INSERT INTO raw_events (
-                ts_ns, slot, sig, wallet, program, action,
+                ts_ns, slot, sig, wallet, alias, program, action,
                 mint, base_mint, quote_mint, amount_in, amount_out,
                 price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet,
-                block_time, recv_time_ns, ix_index, decode_ok, decode_err
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                block_time, recv_time_ns, ix_index, decode_ok, decode_err,
+                pre_balance_sol, post_balance_sol, balance_change_sol
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
             ON CONFLICT (sig, wallet, action) DO NOTHING
             "#
         )
@@ -52,6 +58,7 @@ pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Resu
         .bind(event.slot)
         .bind(&event.sig)
         .bind(&event.wallet)
+        .bind(&event.alias)
         .bind(&event.program)
         .bind(&event.action)
         .bind(&event.mint)
@@ -69,6 +76,9 @@ pub async fn insert_raw_events_batch(pool: &PgPool, events: &[RawEvent]) -> Resu
         .bind(event.ix_index)
         .bind(event.decode_ok)
         .bind(&event.decode_err)
+        .bind(event.pre_balance_sol)
+        .bind(event.post_balance_sol)
+        .bind(event.balance_change_sol)
         .execute(&mut *tx)
         .await?;
     }
@@ -82,11 +92,12 @@ pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Resu
         sqlx::query(
             r#"
             INSERT INTO raw_events (
-                ts_ns, slot, sig, wallet, program, action,
+                ts_ns, slot, sig, wallet, alias, program, action,
                 mint, base_mint, quote_mint, amount_in, amount_out,
                 price_est, fee_sol, ix_accounts_json, meta_json, leader_wallet,
-                block_time, recv_time_ns, ix_index, decode_ok, decode_err
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+                block_time, recv_time_ns, ix_index, decode_ok, decode_err,
+                pre_balance_sol, post_balance_sol, balance_change_sol
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
             ON CONFLICT (sig, wallet, action) DO NOTHING
             "#
         )
@@ -94,6 +105,7 @@ pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Resu
         .bind(event.slot)
         .bind(&event.sig)
         .bind(&event.wallet)
+        .bind(&event.alias)
         .bind(&event.program)
         .bind(&event.action)
         .bind(&event.mint)
@@ -111,6 +123,9 @@ pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Resu
         .bind(event.ix_index)
         .bind(event.decode_ok)
         .bind(&event.decode_err)
+        .bind(event.pre_balance_sol)
+        .bind(event.post_balance_sol)
+        .bind(event.balance_change_sol)
         .execute(pool)
         .await
         .map(|_| {

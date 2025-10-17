@@ -298,26 +298,29 @@ async fn process_transaction(
         // Find wallet's balance index in the transaction
         let wallet_idx = account_keys.iter().position(|k| k == wallet);
         
-        // Calculate SOL balance change for this wallet
-        let (sol_spent, sol_received) = if let Some(idx) = wallet_idx {
-            if idx < pre_balances.len() && idx < post_balances.len() {
-                let pre_balance = pre_balances[idx] as f64 / LAMPORTS_PER_SOL;
-                let post_balance = post_balances[idx] as f64 / LAMPORTS_PER_SOL;
-                let balance_change = post_balance - pre_balance;
-                
-                // If balance decreased, user spent SOL (BUY)
-                // If balance increased, user received SOL (SELL)
-                if balance_change < 0.0 {
-                    (Some(-balance_change), None) // Spent SOL
+        // Extract and calculate balance information
+        let (sol_spent, sol_received, pre_balance_sol, post_balance_sol, balance_change_sol) = 
+            if let Some(idx) = wallet_idx {
+                if idx < pre_balances.len() && idx < post_balances.len() {
+                    let pre_balance = pre_balances[idx] as f64 / LAMPORTS_PER_SOL;
+                    let post_balance = post_balances[idx] as f64 / LAMPORTS_PER_SOL;
+                    let balance_change = post_balance - pre_balance;
+                    
+                    // If balance decreased, user spent SOL (BUY)
+                    // If balance increased, user received SOL (SELL)
+                    let (spent, received) = if balance_change < 0.0 {
+                        (Some(-balance_change), None) // Spent SOL
+                    } else {
+                        (None, Some(balance_change)) // Received SOL
+                    };
+                    
+                    (spent, received, Some(pre_balance), Some(post_balance), Some(balance_change))
                 } else {
-                    (None, Some(balance_change)) // Received SOL
+                    (None, None, None, None, None)
                 }
             } else {
-                (None, None)
-            }
-        } else {
-            (None, None)
-        };
+                (None, None, None, None, None)
+            };
 
         for decoded in &decoded_actions {
             // For amount_in: store token amount
@@ -371,6 +374,7 @@ async fn process_transaction(
                 slot: Some(slot),
                 sig: Some(sig.clone()),
                 wallet: wallet.clone(),
+                alias: wallet_alias.clone(), // Store wallet alias directly for easy querying
                 program: program_id.to_string(),
                 action: decoded.action.as_str().to_string(),
                 mint: decoded.mint.clone(),
@@ -389,6 +393,10 @@ async fn process_transaction(
                 ix_index: None, // Can track which instruction if needed for multi-ix txs
                 decode_ok: decoded.decode_ok,
                 decode_err: decoded.decode_err.clone(),
+                // Parsed balance fields for P&L accuracy
+                pre_balance_sol,
+                post_balance_sol,
+                balance_change_sol,
             };
 
             // Log the trade details with SOL amounts
