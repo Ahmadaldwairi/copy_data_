@@ -23,28 +23,28 @@ const LAMPORTS_PER_SOL: f64 = 1_000_000_000.0;
 async fn main() -> Result<()> {
     logging::init();
 
-    info!("? Pump.fun ingestion bot starting up (Yellowstone gRPC)...");
+    info!("🚀 Pump.fun ingestion bot starting up (Yellowstone gRPC)...");
 
     // Load config
     let config = Config::load("configs/config.example.toml")?;
-    info!(" Loaded config: grpc_url={}, db_url=***", config.solana.grpc_url);
+    info!("⚙️  Loaded config: grpc_url={}, db_url=***", config.solana.grpc_url);
 
     // Connect to database
     let pool = database::connect(Some(&config.database.url)).await?;
     database::health_check(&pool).await?;
-    info!(" Database connection healthy");
+    info!("✅ Database connection healthy");
 
     // Initialize SOL price cache
     let sol_price_cache = SolPriceCache::new();
     sol_price_cache.clone().start_updater();
-    info!(" SOL price updater started (fetching every 10 seconds)");
+    info!("💰 SOL price updater started (fetching every 10 seconds)");
 
     // Load tracked wallets
     let (tracked_wallets, wallet_aliases) = load_tracked_wallets(&pool).await?;
-    info!("? Loaded {} tracked wallets", tracked_wallets.len());
+    info!("👥 Loaded {} tracked wallets", tracked_wallets.len());
 
     let program_id = Pubkey::from_str(&config.pumpfun.program_id)?;
-    info!("? Monitoring Pump.fun program: {}", program_id);
+    info!("🎯 Monitoring Pump.fun program: {}", program_id);
 
     // Shared buffer for batching
     let buffer = Arc::new(Mutex::new(Vec::new()));
@@ -63,7 +63,7 @@ async fn main() -> Result<()> {
                 if let Err(e) = batch_insert_raw_events(&pool_clone, &events).await {
                     error!("Failed to flush events: {}", e);
                 } else if !events.is_empty() {
-                    info!("? Flushed {} events to database", events.len());
+                    info!("💾 Flushed {} events to database", events.len());
                 }
             }
         }
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
 
     // Main ingestion loop with reconnection
     loop {
-        info!("? Connecting to Yellowstone gRPC: {}", config.solana.grpc_url);
+        info!("🔌 Connecting to Yellowstone gRPC: {}", config.solana.grpc_url);
         match run_grpc_stream(
             &config.solana.grpc_url,
             &program_id,
@@ -129,7 +129,7 @@ async fn run_grpc_stream(
         .connect()
         .await?;
 
-    info!(" Connected to Yellowstone gRPC");
+    info!("✅ Connected to Yellowstone gRPC");
 
     // Create subscription request - exactly like your working bot
     let mut transactions: HashMap<String, SubscribeRequestFilterTransactions> = HashMap::new();
@@ -162,8 +162,8 @@ async fn run_grpc_stream(
     // Subscribe and get stream
     let mut stream = client.subscribe_once(request).await?;
 
-    info!("? Subscribed to Yellowstone gRPC stream");
-    info!("? Listening for Pump.fun transactions...");
+    info!("📡 Subscribed to Yellowstone gRPC stream");
+    info!("👂 Listening for Pump.fun transactions...");
 
     let mut tx_count = 0;
 
@@ -177,7 +177,7 @@ async fn run_grpc_stream(
                             tx_count += 1;
 
                             if tx_count % 100 == 0 {
-                                info!("? Processed {} transactions", tx_count);
+                                info!("📊 Processed {} transactions", tx_count);
                             }
 
                             // Get current SOL price
@@ -253,7 +253,7 @@ async fn process_transaction(
     let post_balances = &meta.post_balances;
 
     // Found tracked wallet activity
-    info!("TRACKED WALLET DETECTED! Signature: {}...", &sig[..8]);
+    info!("🔔 TRACKED WALLET DETECTED! Signature: {}...", &sig[..8]);
     
     // Display wallet names (aliases) if available, otherwise first 8 chars
     let wallet_names: Vec<String> = found_wallets
@@ -265,7 +265,7 @@ async fn process_transaction(
                 .unwrap_or_else(|| w[..8].to_string())
         })
         .collect();
-    info!("   Wallets: {:?}", wallet_names);
+    info!("👤 Wallets: {:?}", wallet_names);
 
     // Decode Pump.fun instructions
     let mut decoded_actions = Vec::new();
@@ -403,18 +403,18 @@ async fn process_transaction(
             match decoded.action {
                 decoder::Action::Buy => {
                     if let (Some(tokens), Some(sol)) = (decoded.token_amount, sol_spent) {
-                        info!("    BUY: {} tokens for {:.4} SOL (${:.2})", 
+                        info!("🟢 BUY: {} tokens for {:.4} SOL (${:.2})", 
                             tokens, sol, sol * sol_price);
                     }
                 }
                 decoder::Action::Sell => {
                     if let (Some(tokens), Some(sol)) = (decoded.token_amount, sol_received) {
-                        info!("    SELL: {} tokens for {:.4} SOL (${:.2})", 
+                        info!("🔴 SELL: {} tokens for {:.4} SOL (${:.2})", 
                             tokens, sol, sol * sol_price);
                     }
                 }
                 decoder::Action::Create => {
-                    info!("    CREATE: New token mint");
+                    info!("✨ CREATE: New token mint");
                 }
                 _ => {}
             }
@@ -425,12 +425,12 @@ async fn process_transaction(
 
             // Auto-flush if buffer is full
             if buf.len() >= BATCH_SIZE {
-                info!(" Buffer full ({} events), triggering flush", buf.len());
+                info!("📦 Buffer full ({} events), triggering flush", buf.len());
             }
         }
     }
 
-    info!("Created {} events for database", event_count);
+    info!("✅ Created {} events for database", event_count);
 
     Ok(())
 }

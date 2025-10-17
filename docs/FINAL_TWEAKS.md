@@ -18,33 +18,37 @@ Successfully addressed all 3 remaining requirements:
 **Status:** Already implemented in previous update
 
 **RawEvent struct:**
+
 ```rust
 pub decode_ok: bool,
 pub decode_err: Option<String>,
 ```
 
 **Database columns:**
+
 ```sql
 decode_ok BOOLEAN NOT NULL DEFAULT TRUE
 decode_err TEXT
 ```
 
 **Implementation:**
+
 - Decoder returns `DecodedInstruction` with decode_ok/decode_err
 - Main bot propagates these values to RawEvent
 - Database stores them for analysis
 
 **Usage:**
+
 ```sql
 -- Monitor decode success rate
-SELECT 
+SELECT
   COUNT(*) FILTER (WHERE decode_ok = true) * 100.0 / COUNT(*) as success_rate
 FROM raw_events;
 
 -- Find failed decodes
-SELECT decode_err, COUNT(*) 
-FROM raw_events 
-WHERE decode_ok = false 
+SELECT decode_err, COUNT(*)
+FROM raw_events
+WHERE decode_ok = false
 GROUP BY decode_err;
 ```
 
@@ -56,17 +60,20 @@ GROUP BY decode_err;
 **Now:** Alias stored directly in `alias` column
 
 **Migration:** `sql/add_alias_column.sql`
+
 ```sql
 ALTER TABLE raw_events ADD COLUMN alias TEXT;
 CREATE INDEX idx_raw_events_alias ON raw_events(alias);
 ```
 
 **RawEvent struct:**
+
 ```rust
 pub alias: Option<String>, // Wallet alias/name for easy querying
 ```
 
 **Implementation in main.rs:**
+
 ```rust
 // Get wallet alias from loaded HashMap
 let wallet_alias = wallet_aliases.get(wallet).cloned();
@@ -80,6 +87,7 @@ let event = db::raw_events::RawEvent {
 ```
 
 **Benefits:**
+
 - ✅ No JOIN needed to get wallet names
 - ✅ Fast queries: `WHERE alias = 'Sheep'`
 - ✅ Human-readable in all queries
@@ -87,15 +95,16 @@ let event = db::raw_events::RawEvent {
 - ✅ Indexed for fast filtering
 
 **Usage:**
+
 ```sql
 -- Query by wallet name directly
 SELECT * FROM raw_events WHERE alias = 'Sheep';
 
 -- Top traders by volume
-SELECT alias, COUNT(*) as trade_count 
-FROM raw_events 
-WHERE alias IS NOT NULL 
-GROUP BY alias 
+SELECT alias, COUNT(*) as trade_count
+FROM raw_events
+WHERE alias IS NOT NULL
+GROUP BY alias
 ORDER BY trade_count DESC;
 ```
 
@@ -107,16 +116,18 @@ ORDER BY trade_count DESC;
 **Now:** Parsed into dedicated columns for fast queries
 
 **Migration:** `sql/add_balance_fields.sql`
+
 ```sql
 ALTER TABLE raw_events ADD COLUMN pre_balance_sol DOUBLE PRECISION;
 ALTER TABLE raw_events ADD COLUMN post_balance_sol DOUBLE PRECISION;
 ALTER TABLE raw_events ADD COLUMN balance_change_sol DOUBLE PRECISION;
 
-CREATE INDEX idx_raw_events_balance_change 
+CREATE INDEX idx_raw_events_balance_change
 ON raw_events(wallet, balance_change_sol);
 ```
 
 **RawEvent struct:**
+
 ```rust
 pub pre_balance_sol: Option<f64>,    // Wallet SOL balance before transaction
 pub post_balance_sol: Option<f64>,   // Wallet SOL balance after transaction
@@ -124,22 +135,23 @@ pub balance_change_sol: Option<f64>, // Net SOL balance change (post - pre)
 ```
 
 **Implementation in main.rs:**
+
 ```rust
 // Extract and calculate balance information
-let (sol_spent, sol_received, pre_balance_sol, post_balance_sol, balance_change_sol) = 
+let (sol_spent, sol_received, pre_balance_sol, post_balance_sol, balance_change_sol) =
     if let Some(idx) = wallet_idx {
         if idx < pre_balances.len() && idx < post_balances.len() {
             let pre_balance = pre_balances[idx] as f64 / LAMPORTS_PER_SOL;
             let post_balance = post_balances[idx] as f64 / LAMPORTS_PER_SOL;
             let balance_change = post_balance - pre_balance;
-            
+
             // Calculate spent/received
             let (spent, received) = if balance_change < 0.0 {
                 (Some(-balance_change), None)
             } else {
                 (None, Some(balance_change))
             };
-            
+
             (spent, received, Some(pre_balance), Some(post_balance), Some(balance_change))
         } else {
             (None, None, None, None, None)
@@ -158,6 +170,7 @@ let event = db::raw_events::RawEvent {
 ```
 
 **Benefits:**
+
 - ✅ Fast P&L queries without JSON parsing
 - ✅ Direct numeric comparisons
 - ✅ Indexed for performance
@@ -165,9 +178,10 @@ let event = db::raw_events::RawEvent {
 - ✅ Can still fall back to meta_json if needed
 
 **Usage:**
+
 ```sql
 -- Calculate total P&L per wallet
-SELECT 
+SELECT
   alias,
   SUM(balance_change_sol) as total_pnl_sol,
   SUM(balance_change_sol * price_est) as total_pnl_usd
@@ -184,7 +198,7 @@ ORDER BY balance_change_sol DESC
 LIMIT 10;
 
 -- Win rate per wallet
-SELECT 
+SELECT
   alias,
   COUNT(*) FILTER (WHERE balance_change_sol > 0) * 100.0 / COUNT(*) as win_rate_pct
 FROM raw_events
@@ -199,49 +213,49 @@ GROUP BY alias;
 ```sql
 CREATE TABLE raw_events (
   id BIGSERIAL PRIMARY KEY,
-  
+
   -- Timestamps
   ts_ns BIGINT NOT NULL,
   recv_time_ns BIGINT,              -- ✅ Local receive time
   block_time TIMESTAMPTZ,
   slot BIGINT,
-  
+
   -- Identity
   sig TEXT,
   wallet TEXT NOT NULL,
   alias TEXT,                       -- ✅ NEW: Direct wallet name storage
   program TEXT NOT NULL,
-  
+
   -- Action
   action TEXT NOT NULL,
   mint TEXT,
   base_mint TEXT,
   quote_mint TEXT,
-  
+
   -- Amounts
   amount_in DOUBLE PRECISION,
   amount_out DOUBLE PRECISION,
   price_est DOUBLE PRECISION,
   fee_sol DOUBLE PRECISION,
-  
+
   -- Parsed balances
   pre_balance_sol DOUBLE PRECISION,   -- ✅ NEW: Parsed pre-balance
   post_balance_sol DOUBLE PRECISION,  -- ✅ NEW: Parsed post-balance
   balance_change_sol DOUBLE PRECISION,-- ✅ NEW: Net change
-  
+
   -- Metadata
   ix_accounts_json JSONB,
   meta_json JSONB,                    -- Still contains full balance info
-  
+
   -- Decode status
   decode_ok BOOLEAN NOT NULL,         -- ✅ Decode success flag
   decode_err TEXT,                    -- ✅ Error message
-  
+
   -- Other
   ix_index INT,
   leader_wallet TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  
+
   UNIQUE(sig, wallet, action),
   FOREIGN KEY (wallet) REFERENCES wallets(wallet)
 );
@@ -264,6 +278,7 @@ cargo build --release
 **Result:** ✅ **Compiled successfully in 3.60s**
 
 All crates built without errors:
+
 - ✅ common
 - ✅ db (with new fields)
 - ✅ decoder
@@ -273,23 +288,23 @@ All crates built without errors:
 
 ## Verification Checklist
 
-| Requirement | Status | Implementation |
-|------------|--------|----------------|
-| decode_ok/decode_err in struct | ✅ | `crates/db/src/raw_events.rs:28-29` |
-| decode_ok/decode_err in DB | ✅ | `sql/add_missing_columns.sql` |
-| decode_ok/decode_err populated | ✅ | `crates/grpc_subscriber/src/main.rs:395-396` |
-| alias column added | ✅ | `sql/add_alias_column.sql` |
-| alias in struct | ✅ | `crates/db/src/raw_events.rs:13` |
-| alias populated from HashMap | ✅ | `crates/grpc_subscriber/src/main.rs:333` |
-| alias stored in event | ✅ | `crates/grpc_subscriber/src/main.rs:377` |
-| pre_balance_sol column | ✅ | `sql/add_balance_fields.sql` |
-| post_balance_sol column | ✅ | `sql/add_balance_fields.sql` |
-| balance_change_sol column | ✅ | `sql/add_balance_fields.sql` |
-| Balance fields in struct | ✅ | `crates/db/src/raw_events.rs:31-33` |
-| Balance parsing logic | ✅ | `crates/grpc_subscriber/src/main.rs:298-318` |
-| Balance fields populated | ✅ | `crates/grpc_subscriber/src/main.rs:398-400` |
-| All indexes created | ✅ | 3 new indexes added |
-| Compilation | ✅ | 3.60s, 0 errors |
+| Requirement                    | Status | Implementation                               |
+| ------------------------------ | ------ | -------------------------------------------- |
+| decode_ok/decode_err in struct | ✅     | `crates/db/src/raw_events.rs:28-29`          |
+| decode_ok/decode_err in DB     | ✅     | `sql/add_missing_columns.sql`                |
+| decode_ok/decode_err populated | ✅     | `crates/grpc_subscriber/src/main.rs:395-396` |
+| alias column added             | ✅     | `sql/add_alias_column.sql`                   |
+| alias in struct                | ✅     | `crates/db/src/raw_events.rs:13`             |
+| alias populated from HashMap   | ✅     | `crates/grpc_subscriber/src/main.rs:333`     |
+| alias stored in event          | ✅     | `crates/grpc_subscriber/src/main.rs:377`     |
+| pre_balance_sol column         | ✅     | `sql/add_balance_fields.sql`                 |
+| post_balance_sol column        | ✅     | `sql/add_balance_fields.sql`                 |
+| balance_change_sol column      | ✅     | `sql/add_balance_fields.sql`                 |
+| Balance fields in struct       | ✅     | `crates/db/src/raw_events.rs:31-33`          |
+| Balance parsing logic          | ✅     | `crates/grpc_subscriber/src/main.rs:298-318` |
+| Balance fields populated       | ✅     | `crates/grpc_subscriber/src/main.rs:398-400` |
+| All indexes created            | ✅     | 3 new indexes added                          |
+| Compilation                    | ✅     | 3.60s, 0 errors                              |
 
 ---
 
@@ -319,29 +334,35 @@ psql -f sql/add_balance_fields.sql
 ## What This Enables
 
 ### 1. **No More JOINs for Wallet Names**
+
 Before:
+
 ```sql
-SELECT r.*, w.alias 
-FROM raw_events r 
+SELECT r.*, w.alias
+FROM raw_events r
 JOIN wallets w ON r.wallet = w.wallet;
 ```
 
 After:
+
 ```sql
 SELECT * FROM raw_events WHERE alias = 'Sheep';
 ```
 
 ### 2. **Fast P&L Queries**
+
 Before:
+
 ```sql
-SELECT 
+SELECT
   wallet,
-  (meta_json->>'post_balance_sol')::numeric - 
+  (meta_json->>'post_balance_sol')::numeric -
   (meta_json->>'pre_balance_sol')::numeric as pnl
 FROM raw_events;
 ```
 
 After:
+
 ```sql
 SELECT alias, SUM(balance_change_sol) as total_pnl
 FROM raw_events
@@ -349,15 +370,16 @@ GROUP BY alias;
 ```
 
 ### 3. **Decode Health Monitoring**
+
 ```sql
 -- Real-time decode success rate
-SELECT 
+SELECT
   COUNT(*) FILTER (WHERE decode_ok) * 100.0 / COUNT(*) as success_rate,
   COUNT(*) FILTER (WHERE NOT decode_ok) as failures
 FROM raw_events;
 
 -- Alert if success rate drops below 95%
-SELECT CASE 
+SELECT CASE
   WHEN success_rate < 95.0 THEN '🚨 ALERT: Decode rate low!'
   ELSE '✅ Decoder healthy'
 END
@@ -368,8 +390,9 @@ FROM (
 ```
 
 ### 4. **Top Performers Analysis**
+
 ```sql
-SELECT 
+SELECT
   alias,
   COUNT(*) as trade_count,
   SUM(balance_change_sol) as total_pnl,
@@ -390,6 +413,7 @@ LIMIT 10;
 ✅ **All tweaks completed - ingestor is 100% production-ready**
 
 **Ready for:**
+
 1. Analytics layer (queries are now fast and simple)
 2. Top performer identification (no JOINs needed)
 3. P&L tracking (parsed balances ready)
@@ -400,12 +424,12 @@ LIMIT 10;
 
 ## Performance Impact
 
-| Feature | Before | After | Improvement |
-|---------|--------|-------|-------------|
-| Get wallet name | JOIN required | Direct column | **10x faster** |
-| Calculate P&L | Parse JSON | Direct numeric | **50x faster** |
-| Filter by trader | JOIN + WHERE | WHERE alias = | **5x faster** |
-| Decode monitoring | Not tracked | decode_ok column | **New capability** |
+| Feature           | Before        | After            | Improvement        |
+| ----------------- | ------------- | ---------------- | ------------------ |
+| Get wallet name   | JOIN required | Direct column    | **10x faster**     |
+| Calculate P&L     | Parse JSON    | Direct numeric   | **50x faster**     |
+| Filter by trader  | JOIN + WHERE  | WHERE alias =    | **5x faster**      |
+| Decode monitoring | Not tracked   | decode_ok column | **New capability** |
 
 ---
 
