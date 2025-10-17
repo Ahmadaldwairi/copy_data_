@@ -8,6 +8,7 @@ pub enum Action {
     Buy,
     Sell,
     Swap,
+    Withdraw,
     Unknown,
 }
 
@@ -18,6 +19,7 @@ impl Action {
             Action::Buy => "BUY",
             Action::Sell => "SELL",
             Action::Swap => "SWAP",
+            Action::Withdraw => "WITHDRAW",
             Action::Unknown => "UNKNOWN",
         }
     }
@@ -65,9 +67,10 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
         Action::Buy
     } else if discriminator == DISCRIMINATOR_SELL {
         Action::Sell
+    } else if discriminator == DISCRIMINATOR_WITHDRAW {
+        Action::Withdraw
     } else if discriminator == DISCRIMINATOR_INITIALIZE 
-           || discriminator == DISCRIMINATOR_SET_PARAMS 
-           || discriminator == DISCRIMINATOR_WITHDRAW {
+           || discriminator == DISCRIMINATOR_SET_PARAMS {
         // These are admin/system instructions, not trades - skip them
         tracing::debug!("Skipping non-trade Pump.fun instruction");
         Action::Unknown
@@ -86,9 +89,10 @@ pub fn decode_instruction(data: &[u8], accounts: &[String]) -> Result<DecodedIns
     // - CREATE: mint is at index 0
     // - BUY: mint is at index 2
     // - SELL: mint is at index 2
+    // - WITHDRAW: mint is at index 2
     let mint = match action {
         Action::Create => accounts.get(0).cloned(),
-        Action::Buy | Action::Sell => accounts.get(2).cloned(),
+        Action::Buy | Action::Sell | Action::Withdraw => accounts.get(2).cloned(),
         _ => None,
     };
 
