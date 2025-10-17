@@ -165,11 +165,11 @@ PRIMARY KEY (leader, follower)
 #### 🧠 Next Steps {
 
 ✅ 1.Add missing columns to the events schema - COMPLETED:
-   ✅ - block_time TIMESTAMPTZ (chain time from meta) - ADDED
-   ✅ - recv_time_ns BIGINT (local receive timestamp) - ADDED
-   ✅ - decode_ok BOOLEAN - ADDED
-   ✅ - decode_err TEXT - ADDED
-   ✅ - ix_index INT (which instruction in the transaction) - ADDED
+✅ - block_time TIMESTAMPTZ (chain time from meta) - ADDED
+✅ - recv_time_ns BIGINT (local receive timestamp) - ADDED
+✅ - decode_ok BOOLEAN - ADDED
+✅ - decode_err TEXT - ADDED
+✅ - ix_index INT (which instruction in the transaction) - ADDED
 
 ✅ 2.Extend the Rust RawEvent struct + Postgres insert to fill those fields - COMPLETED
 
