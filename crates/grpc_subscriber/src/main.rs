@@ -32,7 +32,18 @@ async fn main() -> Result<()> {
     // Connect to database
     let pool = database::connect(Some(&config.database.url)).await?;
     database::health_check(&pool).await?;
-    info!("✅ Database connection healthy");
+    info!("✅ Database connection healthy (copytrader)");
+
+    // Connect to discovery database (optional)
+    let discovery_pool = if let Some(discovery_url) = &config.database.discovery_url {
+        let pool = database::connect(Some(discovery_url)).await?;
+        database::health_check(&pool).await?;
+        info!("✅ Discovery database connection healthy");
+        Some(pool)
+    } else {
+        info!("⚠️  Discovery database not configured, skipping");
+        None
+    };
 
     // Initialize SOL price cache
     let sol_price_cache = SolPriceCache::new();
@@ -78,6 +89,7 @@ async fn main() -> Result<()> {
             &tracked_wallets,
             &wallet_aliases,
             buffer.clone(),
+            discovery_pool.clone(),
             sol_price_cache.clone(),
         )
         .await
@@ -121,6 +133,7 @@ async fn run_grpc_stream(
     tracked_wallets: &[String],
     wallet_aliases: &HashMap<String, String>,
     buffer: Arc<Mutex<Vec<db::raw_events::RawEvent>>>,
+    discovery_pool: Option<database::Pool>,
     sol_price_cache: SolPriceCache,
 ) -> Result<()> {
     // Connect to gRPC using the same pattern as your working bot
@@ -185,7 +198,7 @@ async fn run_grpc_stream(
 
                             // Process transaction
                             if let Err(e) =
-                                process_transaction(&tx_update, tracked_wallets, wallet_aliases, program_id, buffer.clone(), sol_price).await
+                                process_transaction(&tx_update, tracked_wallets, wallet_aliases, program_id, buffer.clone(), discovery_pool.clone(), sol_price).await
                             {
                                 warn!("Failed to process transaction: {}", e);
                             }
@@ -214,6 +227,7 @@ async fn process_transaction(
     wallet_aliases: &HashMap<String, String>,
     program_id: &Pubkey,
     buffer: Arc<Mutex<Vec<db::raw_events::RawEvent>>>,
+    discovery_pool: Option<database::Pool>,
     sol_price: f64,
 ) -> Result<()> {
     // Extract transaction data
@@ -240,8 +254,19 @@ async fn process_transaction(
         .cloned()
         .collect();
 
-    // Skip if no tracked wallets
-    if found_wallets.is_empty() {
+    let has_tracked_wallets = !found_wallets.is_empty();
+
+    // For discovery mode: find ALL wallets in Pump.fun transactions
+    // We'll update discovery stats for all wallets, but only create detailed events for tracked ones
+    let all_wallet_keys: Vec<String> = if discovery_pool.is_some() && !has_tracked_wallets {
+        // If no tracked wallets but discovery is enabled, extract all wallet keys
+        account_keys.clone()
+    } else {
+        Vec::new()
+    };
+
+    // Skip if no tracked wallets AND discovery is not enabled
+    if !has_tracked_wallets && discovery_pool.is_none() {
         return Ok(());
     }
 
@@ -252,20 +277,23 @@ async fn process_transaction(
     let pre_balances = &meta.pre_balances;
     let post_balances = &meta.post_balances;
 
-    // Found tracked wallet activity
-    info!("🔔 TRACKED WALLET DETECTED! Signature: {}...", &sig[..8]);
-    
-    // Display wallet names (aliases) if available, otherwise first 8 chars
-    let wallet_names: Vec<String> = found_wallets
-        .iter()
-        .map(|w| {
-            wallet_aliases
-                .get(w)
-                .cloned()
-                .unwrap_or_else(|| w[..8].to_string())
-        })
-        .collect();
-    info!("👤 Wallets: {:?}", wallet_names);
+    // Log activity based on mode
+    if has_tracked_wallets {
+        // Found tracked wallet activity
+        info!("🔔 TRACKED WALLET DETECTED! Signature: {}...", &sig[..8]);
+        
+        // Display wallet names (aliases) if available, otherwise first 8 chars
+        let wallet_names: Vec<String> = found_wallets
+            .iter()
+            .map(|w| {
+                wallet_aliases
+                    .get(w)
+                    .cloned()
+                    .unwrap_or_else(|| w[..8].to_string())
+            })
+            .collect();
+        info!("👤 Wallets: {:?}", wallet_names);
+    }
 
     // Decode Pump.fun instructions from top-level
     let mut decoded_actions = Vec::new();
@@ -303,10 +331,13 @@ async fn process_transaction(
     );
 
     // Create events for each tracked wallet and decoded action
+    // For discovery mode: also update stats for ALL wallets
     let slot = tx.slot as i64;
     let ts_ns = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0);
 
     let mut event_count = 0;
+    
+    // Process tracked wallets (create detailed events)
     for wallet in &found_wallets {
         // Find wallet's balance index in the transaction
         let wallet_idx = account_keys.iter().position(|k| k == wallet);
@@ -336,6 +367,11 @@ async fn process_transaction(
             };
 
         for decoded in &decoded_actions {
+            // Skip UNKNOWN actions - these are from non-Pump.fun programs (Token Program, System Program, etc.)
+            if matches!(decoded.action, decoder::Action::Unknown) {
+                continue;
+            }
+
             // For amount_in: store token amount
             // For amount_out: store SOL amount (spent on BUY, received on SELL)
             let (amount_in, amount_out) = match decoded.action {
@@ -440,10 +476,119 @@ async fn process_transaction(
             if buf.len() >= BATCH_SIZE {
                 info!("📦 Buffer full ({} events), triggering flush", buf.len());
             }
+            drop(buf);
+
+            // Update discovery database for ALL wallets (not just tracked)
+            // This allows us to identify profitable traders automatically
+            if let Some(ref pool) = discovery_pool {
+                // Determine SOL amount for discovery stats
+                let sol_amount = match decoded.action {
+                    decoder::Action::Buy => sol_spent,
+                    decoder::Action::Sell => sol_received,
+                    _ => None,
+                };
+
+                // Update wallet stats in discovery database
+                match db::discovery::update_wallet_stats(
+                    pool,
+                    wallet,
+                    decoded.action.as_str(),
+                    sol_amount,
+                    decoded.mint.as_deref(),
+                ).await {
+                    Ok(true) => {
+                        // New wallet discovered!
+                        info!("🆕 NEW WALLET DISCOVERED: {} | Action: {} | SOL: {:.4}", 
+                            &wallet[..8], 
+                            decoded.action.as_str(),
+                            sol_amount.unwrap_or(0.0)
+                        );
+                    }
+                    Ok(false) => {
+                        // Existing wallet, no log needed
+                    }
+                    Err(e) => {
+                        warn!("Failed to update discovery stats for wallet {}: {}", &wallet[..8], e);
+                    }
+                }
+            }
         }
     }
 
-    info!("✅ Created {} events for database", event_count);
+    // Discovery mode: Process ALL wallets in the transaction (not just tracked ones)
+    // This enables automatic discovery of profitable traders
+    if let Some(ref pool) = discovery_pool {
+        if !has_tracked_wallets && !all_wallet_keys.is_empty() {
+            // Process all wallets for discovery stats only (no detailed events)
+            for wallet in &all_wallet_keys {
+                // Skip if this wallet is actually tracked (already processed above)
+                if tracked_wallets.contains(wallet) {
+                    continue;
+                }
+
+                // Find wallet's balance index
+                let wallet_idx = account_keys.iter().position(|k| k == wallet);
+                let (sol_spent, sol_received) = if let Some(idx) = wallet_idx {
+                    if idx < pre_balances.len() && idx < post_balances.len() {
+                        let pre_balance = pre_balances[idx] as f64 / LAMPORTS_PER_SOL;
+                        let post_balance = post_balances[idx] as f64 / LAMPORTS_PER_SOL;
+                        let balance_change = post_balance - pre_balance;
+                        
+                        if balance_change < 0.0 {
+                            (Some(-balance_change), None)
+                        } else {
+                            (None, Some(balance_change))
+                        }
+                    } else {
+                        (None, None)
+                    }
+                } else {
+                    (None, None)
+                };
+
+                // Update discovery stats for each decoded action
+                for decoded in &decoded_actions {
+                    if matches!(decoded.action, decoder::Action::Unknown) {
+                        continue;
+                    }
+
+                    let sol_amount = match decoded.action {
+                        decoder::Action::Buy => sol_spent,
+                        decoder::Action::Sell => sol_received,
+                        _ => None,
+                    };
+
+                    // Update wallet stats
+                    match db::discovery::update_wallet_stats(
+                        pool,
+                        wallet,
+                        decoded.action.as_str(),
+                        sol_amount,
+                        decoded.mint.as_deref(),
+                    ).await {
+                        Ok(true) => {
+                            // New wallet discovered!
+                            info!("🆕 NEW WALLET DISCOVERED: {} | Action: {} | SOL: {:.4}", 
+                                &wallet[..8], 
+                                decoded.action.as_str(),
+                                sol_amount.unwrap_or(0.0)
+                            );
+                        }
+                        Ok(false) => {
+                            // Existing wallet, updated stats
+                        }
+                        Err(e) => {
+                            warn!("Failed to update discovery stats: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if event_count > 0 {
+        info!("✅ Created {} events for database", event_count);
+    }
 
     Ok(())
 }

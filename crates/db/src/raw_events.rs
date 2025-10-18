@@ -1,6 +1,7 @@
 //! Database models and queries for raw_events
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 
@@ -24,7 +25,7 @@ pub struct RawEvent {
     pub meta_json: Option<JsonValue>,
     pub leader_wallet: Option<String>,
     // New fields for complete event tracking
-    pub block_time: Option<i64>,      // Chain timestamp from metadata
+    pub block_time: Option<DateTime<Utc>>,  // Chain timestamp from metadata
     pub recv_time_ns: Option<i64>,    // Local receive timestamp for latency analysis
     pub ix_index: Option<i32>,        // Instruction index within transaction
     pub decode_ok: bool,               // Whether decode was successful
@@ -130,6 +131,11 @@ pub async fn batch_insert_raw_events(pool: &PgPool, events: &[RawEvent]) -> Resu
         .await
         .map(|_| {
             count += 1;
+        })
+        .map_err(|e| {
+            eprintln!("❌ Database insert error: {} (sig: {:?}, wallet: {}, action: {})", 
+                e, event.sig, event.wallet, event.action);
+            e
         })
         .ok();
     }

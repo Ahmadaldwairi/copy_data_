@@ -10,8 +10,10 @@ chain = "mainnet" # or "devnet"
 program_id = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P" # Pump.fun program ID
 
 [database]
-# Postgres connection URL
+# Postgres connection URL - main database for tracked wallets' detailed events
 url = "postgresql://ahmad:Jadoo31991@localhost:5432/copytrader"
+# Discovery database URL - aggregated stats for ALL wallets to identify profitable traders
+discovery_url = "postgresql://ahmad:Jadoo31991@localhost:5432/discovery"
 
 [risk]
 per_trade_sol_cap = 1.0

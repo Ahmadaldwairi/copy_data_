@@ -36,6 +36,8 @@ pub struct PumpFunConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatabaseConfig {
     pub url: String,
+    #[serde(default)]
+    pub discovery_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

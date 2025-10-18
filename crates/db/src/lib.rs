@@ -1,6 +1,7 @@
 //! Database access layer with sqlx for SQLite or Postgres.
 
 pub mod raw_events;
+pub mod discovery;
 
 use anyhow::Result;
 #[cfg(feature = "sqlite")]

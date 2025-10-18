@@ -15,9 +15,10 @@ postgres = ["sqlx/postgres"]
 
 [dependencies]
 anyhow = "1"
+chrono = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sqlx = { version = "0.6", default-features = false, features = ["runtime-tokio-rustls", "macros", "json", "postgres"] }
+sqlx = { version = "0.6", default-features = false, features = ["runtime-tokio-rustls", "macros", "json", "postgres", "chrono"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
 
